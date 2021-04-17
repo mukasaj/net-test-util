@@ -1,3 +1,5 @@
+import readline
+
 from connection import Connection
 from scapy.all import *
 

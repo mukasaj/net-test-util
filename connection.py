@@ -41,7 +41,7 @@ class Connection:
     destination ip(dst):        {}
     source port(sport):         {}
     destination port(dport):    {}
-    timeout:                    {}
+    timeout(timeout):           {}
     base seq number:            {}
     current seq number(seq)     {}
         '''.format(
