@@ -113,7 +113,6 @@ class Connection:
             self.reset()
 
     def reset(self, seq=None, v=None):
-        verbose = self.verbose if v is None else v
         try:
             seq = seq if seq else self.seq
             ip = IP(src=self.src, dst=self.dst)
@@ -123,27 +122,25 @@ class Connection:
             print(ex)
             print("FAILED TO SEND RESET")
 
-    def send(self, payload):
+    def send(self, payload, v=None):
+        verbose = self.verbose if v is None else v
+
         if self.connected is False:
             print("ERROR, not connected")
             return
 
         try:
-            pkt = self.ip / TCP(sport=self.sport, dport=self.dport, flags="PA", seq=self.ack, ack=self.seq) / payload
+            pkt = self.ip / TCP(sport=self.sport, dport=self.dport, flags="PA", seq=self.seq, ack=self.ack) / payload
 
             ack = sr1(pkt, timeout=self.timeout)
 
-            ack.show()
-            print("++++++++++++++++++++++++++++++++++++++++++++++++")
-            print(ack[TCP].seq)
-            print("++++++++++++++++++++++++++++++++++++++++++++++++")
-            print("old seq {}".format(self.seq))
             self.seq += len(payload)
-            print("new seq {}".format(self.seq))
+            self.ack = ack.seq
 
-            print("old ack {}".format(self.ack))
-            self.ack = self.ack
-            print("new ack {}".format(self.ack))
+            if verbose:
+                ack.show()
+                print("new seq {}".format(self.seq))
+                print("new ack {}".format(self.ack))
 
             assert ack.haslayer(TCP), 'TCP layer missing'
             assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
