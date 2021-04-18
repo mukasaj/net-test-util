@@ -54,6 +54,9 @@ class Connection:
             self.seq
         ))
 
+    def is_connected(self):
+        return self.connected
+
     def connect(self):
         try:
             # SYN
