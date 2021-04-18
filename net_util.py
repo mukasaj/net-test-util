@@ -20,6 +20,10 @@ def load(module):
     load_contrib(module)
 
 
+def show(pkt):
+    pkt.show()
+
+
 def connect(**kwargs):
     connection.connect(**kwargs)
 
@@ -42,6 +46,7 @@ def help():
     disconnect() = disconnect from server
     load(<contrib name>) - loads contrib module
     send(<packet>) - sends packet(s)
+    show(<scapy packet>) - shows a scapy packet
     reset() - resets the connection
     ''')
 

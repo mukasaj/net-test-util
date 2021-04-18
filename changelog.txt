@@ -7,6 +7,7 @@ Added the following:
     - Verifying syn ack response when connecting
     - Reset connection if disconnect fails
     - Fixed the send function in connection.py
+    - show function that shows a scapy packet
 
 Removed the following:
     - connection.old.py file
