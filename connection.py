@@ -139,8 +139,6 @@ class Connection:
 
             if verbose:
                 ack.show()
-                print("new seq {}".format(self.seq))
-                print("new ack {}".format(self.ack))
 
             assert ack.haslayer(TCP), 'TCP layer missing'
             assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
