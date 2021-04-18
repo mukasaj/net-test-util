@@ -36,7 +36,7 @@ def reset(**kwargs):
     connection.reset(**kwargs)
 
 
-def ntu_help():
+def help():
     print('''
     connect() - connect to server
     disconnect() = disconnect from server
@@ -63,9 +63,6 @@ if __name__ == '__main__':
     print("net-util v{}".format(VERSION))
     while True:
         val = input(">>>")
-        if val == 'help':
-            ntu_help()
-            continue
         if val == '':
             continue
         try:
