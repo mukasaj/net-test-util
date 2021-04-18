@@ -5,7 +5,7 @@ import sys
 from connection import Connection
 from scapy.all import *
 
-VERSION = '0.1.1'
+VERSION = '0.2'
 
 # iptables -A OUTPUT -p tcp --tcp-flags RST RST -s 192.168.1.20 -j DROP
 
@@ -20,16 +20,16 @@ def load(module):
     load_contrib(module)
 
 
-def connect():
-    connection.connect()
+def connect(**kwargs):
+    connection.connect(**kwargs)
 
 
-def disconnect():
-    connection.disconnect()
+def disconnect(**kwargs):
+    connection.disconnect(**kwargs)
 
 
-def send(payload):
-    connection.send(payload)
+def send(payload, **kwargs):
+    connection.send(payload, **kwargs)
 
 
 def reset(**kwargs):
@@ -38,11 +38,11 @@ def reset(**kwargs):
 
 def ntu_help():
     print('''
-        connect() - connect to server
-        disconnect() = disconnect from server
-        load(<contrib name>) - loads contrib module
-        send(<packet>) - sends packet(s)
-        reset() - resets the connection
+    connect() - connect to server
+    disconnect() = disconnect from server
+    load(<contrib name>) - loads contrib module
+    send(<packet>) - sends packet(s)
+    reset() - resets the connection
     ''')
 
 
@@ -56,6 +56,7 @@ def exit():
 
 def sigint_handler(sig, frame):
     exit()
+
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigint_handler)

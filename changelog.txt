@@ -1,5 +1,8 @@
 v0.2 changelog
 
 Added the following:
-    - version number is printed out to the console when the application starts
+    - Version number is printed out to the console when the application starts
     - If the application is closed with an open connection, the connection is automatically reset
+    - Added verbose option to connect, send, disconnect, and reset functions
+    - Verifying syn ack response when connecting
+    - Reset connection if disconnect fails
