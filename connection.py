@@ -1,5 +1,6 @@
 import random
 import socket
+import pickle
 
 from scapy.layers.inet import IP, TCP
 from scapy.all import *
@@ -8,17 +9,22 @@ from scapy.all import *
 class Connection:
 
     def __init__(self):
-        self.timeout = 5
-        self.dport = 64444
-        self.sport = 64444
+
+        # application variables
         self.src = '192.168.59.128'
         self.dst = '192.168.59.129'
-        self.connected = False
-        self.ip = None
-        self.ack = None
+        self.dport = 64444
+        self.sport = 64444
+        self.timeout = 5
         self.base_seq = 1000
-        self.seq = 1000
-        self.verbose = False
+        self.v = False
+
+        # session/connection variables
+        self.ip = None
+        self.connected = False
+        self.seq = self.base_seq
+        self.base_ack = 0
+        self.ack = self.base_ack
 
     def config(self, src=None, dst=None, sport=None, dport=None, timeout=None, base_seq=None, seq=None, ack=None):
         self.src = src if src else self.src
@@ -31,15 +37,20 @@ class Connection:
         self.ack = ack if ack else self.ack
 
         print('''
+    ==== APPLICATION CONFIGURATION ====
     source ip(src):             {}
     destination ip(dst):        {}
     source port(sport):         {}
     destination port(dport):    {}
     timeout(timeout):           {}
-    base seq number:            {}
-    current seq number(seq)     {}
+    base seq number(base_seq):  {}
+    verbose(v):                 {}
+    
+    ==== SESSION DATA ====
+    connection status           {}
+    current seq number(seq)     {}({})
     base ack number:            {}
-    current ack number(ack):    {}
+    current ack number(ack):    {}({})
         '''.format(
             self.src,
             self.dst,
@@ -47,16 +58,20 @@ class Connection:
             self.dport,
             self.timeout,
             self.base_seq,
+            self.v,
+            True if self.connected else False,
             self.seq,
+            self.seq - self.base_seq,
             self.base_ack,
-            self.ack
+            self.ack,
+            self.ack - self.base_ack
         ))
 
     def is_connected(self):
         return self.connected
 
     def connect(self, v=None):
-        verbose = self.verbose if v is None else v
+        verbose = self.v if v is None else v
         try:
             # SYN
             self.ip = IP(src=self.src, dst=self.dst)
@@ -73,7 +88,7 @@ class Connection:
 
             # setting ack number using seq from response
             self.base_ack = syn_ack.seq
-            self.ack = syn_ack.seq
+            self.ack = self.base_ack
 
             # incrementing ack from phantom byte in SYN ACK response
             self.ack += 1
@@ -86,14 +101,13 @@ class Connection:
             ack = TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             send(self.ip / ack)
 
-
             self.connected = True
         except Exception as ex:
             print(ex)
             print("FAILED TO CONNECT")
 
     def disconnect(self, v=None):
-        verbose = self.verbose if v is None else v
+        verbose = self.v if v is None else v
         try:
             fin = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
             ack_fin_ack = sr1(fin, timeout=15, multi=1)
@@ -113,17 +127,41 @@ class Connection:
             self.reset()
 
     def reset(self, seq=None, v=None):
+        verbose = self.v if v is None else v
         try:
             seq = seq if seq else self.seq
             ip = IP(src=self.src, dst=self.dst)
-            send(ip / TCP(sport=self.sport, dport=self.dport, flags="R", seq=seq))
+            rst = ip / TCP(sport=self.sport, dport=self.dport, flags="R", seq=seq)
+
+            if verbose:
+                rst.show()
+
+            send(rst)
+
+            self.base_ack = 0
+            self.ack = 0
+            self.seq = self.base_seq
             self.connected = False
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND RESET")
 
+    def save(self):
+        config = {
+            'src': self.src,
+            'dst': self.dst,
+            'sport': self.sport,
+            'dport': self.dport,
+            'timeout': self.timeout,
+            'base_seq': self.seq,
+            'verbose': self.v
+        }
+        config_file = open('configuration', 'wb')
+        pickle.dumo(config, config_file)
+        config_file.close()
+
     def send(self, payload, v=None):
-        verbose = self.verbose if v is None else v
+        verbose = self.v if v is None else v
 
         if self.connected is False:
             print("ERROR, not connected")

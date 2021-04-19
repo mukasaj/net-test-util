@@ -1,13 +1,4 @@
-v0.2 changelog
+v0.3 changelog
 
-Added the following:
-    - Version number is printed out to the console when the application starts
-    - If the application is closed with an open connection, the connection is automatically reset
-    - Added verbose option to connect, send, disconnect, and reset functions
-    - Verifying syn ack response when connecting
-    - Reset connection if disconnect fails
-    - Fixed the send function in connection.py
-    - show function that shows a scapy packet
-
-Removed the following:
-    - connection.old.py file
+- Added more print outs for verbose
+- Added the ability to save the connection config

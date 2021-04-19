@@ -5,7 +5,7 @@ import sys
 from connection import Connection
 from scapy.all import *
 
-VERSION = '0.2'
+VERSION = '0.3'
 
 # iptables -A OUTPUT -p tcp --tcp-flags RST RST -s 192.168.1.20 -j DROP
 
@@ -36,6 +36,10 @@ def send(payload, **kwargs):
     connection.send(payload, **kwargs)
 
 
+def save():
+    connection.save()
+
+
 def reset(**kwargs):
     connection.reset(**kwargs)
 
@@ -43,8 +47,9 @@ def reset(**kwargs):
 def help():
     print('''
     connect() - connect to server
-    disconnect() = disconnect from server
+    disconnect() - disconnect from server
     load(<contrib name>) - loads contrib module
+    save() - saves the application configuration
     send(<packet>) - sends packet(s)
     show(<scapy packet>) - shows a scapy packet
     reset() - resets the connection
