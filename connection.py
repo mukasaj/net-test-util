@@ -1,4 +1,5 @@
 import configparser
+import threading
 
 from scapy.layers.inet import IP, TCP
 from scapy.all import *
@@ -34,6 +35,9 @@ class Connection:
         self.seq = self.base_seq
         self.base_ack = 0
         self.ack = self.base_ack
+
+        # receiving thread
+        self._receiving_thread = None
 
     def config(self, src=None, dst=None, sport=None, dport=None,
                timeout=None, base_seq=None, seq=None, ack=None, v=None):
@@ -122,6 +126,9 @@ class Connection:
             send(ack)
 
             self.connected = True
+            self._receiving_thread = threading.Thread(target=self._receiving_thread_func, args=())
+            self._receiving_thread.start()
+
         except Exception as ex:
             print(ex)
             print("FAILED TO CONNECT, SENDING RESET")
@@ -142,7 +149,9 @@ class Connection:
             last_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="A", seq=ack.seq,
                                      ack=ack.ack)
             send(last_ack)
+            self._receiving_thread.join()
             self.connected = False
+            self._receiving_thread.join()
         except Exception as ex:
             print(ex)
             print("FAILED TO DISCONNECT, SENDING RESET")
@@ -168,6 +177,8 @@ class Connection:
             self.ack = 0
             self.seq = self.base_seq
             self.connected = False
+            if self._receiving_thread:
+                self._receiving_thread.join()
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND RESET")
@@ -203,17 +214,13 @@ class Connection:
                 print("=======================================")
 
             ack = sr1(pkt, timeout=self.timeout)
-
-            if verbose:
-                print("============== RESPONSE ==============")
-                pkt.show()
-                print("=======================================")
-
             self.seq += len(payload)
             self.ack = ack.seq
 
             if verbose:
+                print("============== RESPONSE ==============")
                 ack.show()
+                print("=======================================")
 
             assert ack.haslayer(TCP), 'TCP layer missing'
             assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
@@ -221,3 +228,12 @@ class Connection:
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND PAYLOAD")
+
+    def _receiving_thread_func(self):
+        while self.connected:
+            sniff(filter='src host 192.168.59.129 and port 64444', count=1, prn=self._ack, timeout=1)
+
+    def _ack(self, pkt):
+        self.ack += len(pkt[TCP].payload) - 2
+        ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+        send(ack)
