@@ -68,6 +68,7 @@ def sigint_handler(sig, frame):
     exit()
 
 
+
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigint_handler)
     print("net-util v{}".format(VERSION))
