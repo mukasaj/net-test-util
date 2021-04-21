@@ -1,8 +1,8 @@
 import configparser
 import threading
 
-from scapy.layers.inet import IP, TCP
 from scapy.all import *
+from scapy.layers.inet import IP, TCP
 
 CONFIG_FILE = 'config.ini'
 
@@ -36,8 +36,9 @@ class Connection:
         self.base_ack = 0
         self.ack = self.base_ack
 
-        # receiving thread
+        #  multithreading
         self._receiving_thread = None
+        self._lock = threading.Lock()
 
     def config(self, src=None, dst=None, sport=None, dport=None,
                timeout=None, base_seq=None, seq=None, ack=None, v=None):
@@ -87,6 +88,11 @@ class Connection:
 
     def connect(self, v=None):
         verbose = self.v if v is None else v
+
+        if self.connected:
+            print('ERROR YOU ARE CURRENTLY CONNECTED')
+            return
+
         try:
             # SYN
             self.ip = IP(src=self.src, dst=self.dst)
@@ -137,6 +143,8 @@ class Connection:
     # TODO: fix disconnect
     def disconnect(self, v=None):
         verbose = self.v if v is None else v
+
+        self._lock.acquire()
         try:
             fin = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
             ack_fin_ack = sr1(fin, timeout=self.timeout, multi=1)
@@ -156,12 +164,16 @@ class Connection:
             print(ex)
             print("FAILED TO DISCONNECT, SENDING RESET")
             self.reset()
+        finally:
+            self._lock.release()
 
     def log(self, inbound):
         pass
 
     def reset(self, seq=None, v=None):
         verbose = self.v if v is None else v
+
+        self._lock.acquire()
         try:
             seq = seq if seq else self.seq
             ip = IP(src=self.src, dst=self.dst)
@@ -178,10 +190,15 @@ class Connection:
             self.seq = self.base_seq
             self.connected = False
             if self._receiving_thread:
+                print('here')
                 self._receiving_thread.join()
+                print('here2')
+
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND RESET")
+        finally:
+            self._lock.release()
 
     def save(self):
         config = configparser.ConfigParser()
@@ -205,6 +222,7 @@ class Connection:
             print("ERROR, not connected")
             return
 
+        self._lock.acquire()
         try:
             pkt = self.ip / TCP(sport=self.sport, dport=self.dport, flags="PA", seq=self.seq, ack=self.ack) / payload
 
@@ -213,9 +231,8 @@ class Connection:
                 pkt.show()
                 print("=======================================")
 
-            ack = sr1(pkt, timeout=self.timeout)
+            ack = sr1(pkt, timeout=self.timeout, verbose=False)
             self.seq += len(payload)
-            self.ack = ack.seq
 
             if verbose:
                 print("============== RESPONSE ==============")
@@ -229,11 +246,22 @@ class Connection:
             print(ex)
             print("FAILED TO SEND PAYLOAD")
 
+        finally:
+            self._lock.release()
+
     def _receiving_thread_func(self):
         while self.connected:
-            sniff(filter='src host 192.168.59.129 and port 64444', count=1, prn=self._ack, timeout=1)
+            sniff(filter='src host {} and port {}'.format(self.src, self.dport), count=1, prn=self._ack, timeout=1)
 
     def _ack(self, pkt):
-        self.ack += len(pkt[TCP].payload) - 2
-        ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
-        send(ack)
+        print("============== RECEIVED ==============")
+        pkt.show()
+        print("=======================================")
+
+        self._lock.acquire()
+        try:
+            self.ack += len(pkt[TCP].payload)
+            ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+            send(ack, verbose=False)
+        finally:
+            self._lock.release()
