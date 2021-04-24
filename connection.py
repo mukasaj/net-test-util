@@ -39,6 +39,7 @@ class Connection:
         #  multithreading
         self._receiving_thread = None
         self._lock = threading.Lock()
+        self._padding = True
 
     def config(self, src=None, dst=None, sport=None, dport=None,
                timeout=None, base_seq=None, seq=None, ack=None, v=None):
@@ -190,9 +191,7 @@ class Connection:
             self.seq = self.base_seq
             self.connected = False
             if self._receiving_thread:
-                print('here')
                 self._receiving_thread.join()
-                print('here2')
 
         except Exception as ex:
             print(ex)
@@ -251,17 +250,27 @@ class Connection:
 
     def _receiving_thread_func(self):
         while self.connected:
-            sniff(filter='src host {} and port {}'.format(self.src, self.dport), count=1, prn=self._ack, timeout=1)
+            sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
+                  prn=self._ack, timeout=1)
 
     def _ack(self, pkt):
+        if self._padding:
+            self._padding = False
+            return
+        else:
+            self._padding = True
+
         print("============== RECEIVED ==============")
         pkt.show()
         print("=======================================")
 
         self._lock.acquire()
         try:
-            self.ack += len(pkt[TCP].payload)
+            self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             send(ack, verbose=False)
+        except Exception as ex:
+            print(ex)
         finally:
             self._lock.release()
+
