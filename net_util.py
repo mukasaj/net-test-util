@@ -5,7 +5,8 @@ import sys
 from connection import Connection
 from scapy.all import *
 
-VERSION = '0.3'
+VERSION = '0.4'
+readline.write_history_file('history')
 
 # iptables -A OUTPUT -p tcp --tcp-flags RST RST -s 192.168.1.20 -j DROP
 
