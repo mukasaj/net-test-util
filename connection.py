@@ -10,6 +10,7 @@ CONFIG_FILE = 'config.ini'
 # TODO: finish verbose outputs
 # TODO: set timeout in send calls
 # TODO: add log saving
+# TODO: add default load list
 class Connection:
 
     def __init__(self):
@@ -104,7 +105,7 @@ class Connection:
                 syn.show()
                 print("=======================================")
 
-            syn_ack = sr1(syn, timeout=self.timeout)
+            syn_ack = sr1(syn, timeout=self.timeout, verbose=False)
 
             if verbose:
                 print("============== RESPONSE ==============")
@@ -130,7 +131,7 @@ class Connection:
                 syn_ack.show()
                 print("=======================================")
 
-            send(ack)
+            send(ack, verbose=False)
 
             self.connected = True
             self._receiving_thread = threading.Thread(target=self._receiving_thread_func, args=())
@@ -144,26 +145,38 @@ class Connection:
     # TODO: fix disconnect
     def disconnect(self, v=None):
         verbose = self.v if v is None else v
+        received_finack = False
+
+        self.connected = False
+        self._receiving_thread.join()
 
         self._lock.acquire()
         try:
             fin = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
-            ack_fin_ack = sr1(fin, timeout=self.timeout, multi=1)
-            ack = ack_fin_ack[0]
-            fin_ack = ack_fin_ack[1]
+            ack = sr1(fin, timeout=self.timeout)
+            self.seq += 1
 
-            assert fin_ack.haslayer(TCP), 'TCP layer missing'
-            assert fin_ack[TCP].flags & 0x11 == 0x11, 'No FIN/ACK flags, received \'{}\''.format(fin_ack[TCP].flags)
+            assert ack.haslayer(TCP), 'TCP layer missing'
+            assert ack[TCP].flags == 'A', 'Did not response when ACK'
 
-            last_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="A", seq=ack.seq,
-                                     ack=ack.ack)
-            send(last_ack)
-            self._receiving_thread.join()
-            self.connected = False
-            self._receiving_thread.join()
+            def inner_disconnect(pkt):
+                if pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
+                    nonlocal received_finack
+                    received_finack = True
+
+            while True:
+                sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
+                      prn=inner_disconnect, timeout=1)
+                if received_finack:
+                    break
+
+            ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+            send(ack, verbose=False)
+
         except Exception as ex:
             print(ex)
-            print("FAILED TO DISCONNECT, SENDING RESET")
+            print("FAILED TO START DISCONNECT, SENDING RESET")
+            self._lock.release()
             self.reset()
         finally:
             self._lock.release()
@@ -207,7 +220,7 @@ class Connection:
             'sport': self.sport,
             'dport': self.dport,
             'timeout': self.timeout,
-            'base_seq': self.seq,
+            'base_seq': self.base_seq,
             'verbose': self.v
         }
         with open(CONFIG_FILE, 'w') as config_file:
@@ -266,6 +279,26 @@ class Connection:
 
         self._lock.acquire()
         try:
+            assert pkt.haslayer(TCP), 'TCP layer missing'
+
+            if pkt[TCP].flags == 'RA' or pkt[TCP].flags == 'R':
+                print('THE CONNECTION WAS RESET')
+                self.base_ack = 0
+                self.ack = 0
+                self.seq = self.base_seq
+                self.connected = False
+                return
+            elif pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
+                self.ack += 1
+                ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="A", seq=self.seq, ack=self.ack)
+                send(ack, verbose=False)
+                self.seq += 1
+
+                fin_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
+                send(fin_ack, verbose=False)
+                self.connected = False
+                return
+
             self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             send(ack, verbose=False)
@@ -273,4 +306,3 @@ class Connection:
             print(ex)
         finally:
             self._lock.release()
-
