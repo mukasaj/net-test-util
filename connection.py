@@ -105,6 +105,7 @@ class Connection:
                 syn.show()
                 print("=======================================")
 
+            # sending syn and waiting for syn_Ack response
             syn_ack = sr1(syn, timeout=self.timeout, verbose=False)
 
             if verbose:
@@ -147,11 +148,13 @@ class Connection:
         verbose = self.v if v is None else v
         received_finack = False
 
+        # joining the receiving thread
         self.connected = False
         self._receiving_thread.join()
 
         self._lock.acquire()
         try:
+            # sending fin and waiting for ack response
             fin = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
             ack = sr1(fin, timeout=self.timeout)
             self.seq += 1
@@ -159,17 +162,20 @@ class Connection:
             assert ack.haslayer(TCP), 'TCP layer missing'
             assert ack[TCP].flags == 'A', 'Did not response when ACK'
 
+            # inner function to check for finack ot fin response from sniff
             def inner_disconnect(pkt):
                 if pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
                     nonlocal received_finack
                     received_finack = True
 
+            # sniff packets from dst until finack or fin is received
             while True:
                 sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
                       prn=inner_disconnect, timeout=1)
                 if received_finack:
                     break
 
+            # response with ack
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             send(ack, verbose=False)
 
@@ -189,6 +195,7 @@ class Connection:
 
         self._lock.acquire()
         try:
+            # craft rst packet
             seq = seq if seq else self.seq
             ip = IP(src=self.src, dst=self.dst)
             rst = ip / TCP(sport=self.sport, dport=self.dport, flags="R", seq=seq)
@@ -197,14 +204,20 @@ class Connection:
                 print("=========== RESET PACKET ===========")
                 rst.show()
                 print('====================================')
+
+            # send rst packet
             send(rst)
 
+            # reset connection values
             self.base_ack = 0
             self.ack = 0
             self.seq = self.base_seq
             self.connected = False
+
+            # if the receiving thread is not none have it return to the main thread
             if self._receiving_thread:
                 self._receiving_thread.join()
+                self._receiving_thread = None
 
         except Exception as ex:
             print(ex)
@@ -236,6 +249,7 @@ class Connection:
 
         self._lock.acquire()
         try:
+            # craft packet with payload
             pkt = self.ip / TCP(sport=self.sport, dport=self.dport, flags="PA", seq=self.seq, ack=self.ack) / payload
 
             if verbose:
@@ -243,6 +257,7 @@ class Connection:
                 pkt.show()
                 print("=======================================")
 
+            # send packet with payload and add payload length to seq
             ack = sr1(pkt, timeout=self.timeout, verbose=False)
             self.seq += len(payload)
 
@@ -257,16 +272,18 @@ class Connection:
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND PAYLOAD")
-
         finally:
             self._lock.release()
 
     def _receiving_thread_func(self):
+        # loop while connection is active, the packets are passed to the _ack function
         while self.connected:
             sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
                   prn=self._ack, timeout=1)
 
     def _ack(self, pkt):
+        # for some weird reason packets seem to be received twice, the first time with nothing but padding and a second
+        # time with data. I'm using a little logic piece to ignore the first packet with only padding
         if self._padding:
             self._padding = False
             return
@@ -279,8 +296,10 @@ class Connection:
 
         self._lock.acquire()
         try:
+            # check for tcp layer
             assert pkt.haslayer(TCP), 'TCP layer missing'
 
+            # check if a reset message was sent
             if pkt[TCP].flags == 'RA' or pkt[TCP].flags == 'R':
                 print('THE CONNECTION WAS RESET')
                 self.base_ack = 0
@@ -288,6 +307,7 @@ class Connection:
                 self.seq = self.base_seq
                 self.connected = False
                 return
+            # check if a fin message was sent
             elif pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
                 self.ack += 1
                 ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="A", seq=self.seq, ack=self.ack)
@@ -299,9 +319,11 @@ class Connection:
                 self.connected = False
                 return
 
+            # acknowledge any data sent
             self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             send(ack, verbose=False)
+
         except Exception as ex:
             print(ex)
         finally:
