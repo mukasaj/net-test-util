@@ -6,7 +6,7 @@ from connection import Connection
 from scapy.all import *
 
 VERSION = '0.4'
-readline.write_history_file('history')
+HISTORY_FILE = '.history'
 
 # iptables -A OUTPUT -p tcp --tcp-flags RST RST -s 192.168.1.20 -j DROP
 
@@ -58,6 +58,7 @@ def help():
 
 
 def exit():
+    readline.write_history_file('history')
     if connection.is_connected():
         print("\nsending RST packet to open connection")
         connection.reset()
@@ -73,6 +74,7 @@ def sigint_handler(sig, frame):
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigint_handler)
     print("net-util v{}".format(VERSION))
+    readline.read_history_file('history')
     while True:
         val = input(">>>")
         if val == '':
