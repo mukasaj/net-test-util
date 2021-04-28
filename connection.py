@@ -7,7 +7,6 @@ from scapy.layers.inet import IP, TCP
 CONFIG_FILE = 'config.ini'
 
 
-# TODO: finish verbose outputs
 # TODO: set timeout in send calls
 # TODO: add log saving
 # TODO: add default load list
@@ -95,10 +94,12 @@ class Connection:
     def connect(self, v=None):
         verbose = self.v if v is None else v
 
+        # checking if we're already connected
         if self.connected:
             print('ERROR YOU ARE CURRENTLY CONNECTED')
             return
 
+        # creating file name for the session
         now = datetime.now()
         self._log_file = 'logs/' + str(now.strftime("%d-%m-%Y %H:%M:%S")) + '.txt'
 
@@ -153,7 +154,6 @@ class Connection:
             print("FAILED TO CONNECT, SENDING RESET")
             self.reset()
 
-    # TODO: fix disconnect
     def disconnect(self, v=None):
         verbose = self.v if v is None else v
         received_finack = False
@@ -165,8 +165,22 @@ class Connection:
         self._lock.acquire()
         try:
             # sending fin and waiting for ack response
-            fin = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
-            ack = sr1(fin, timeout=self.timeout)
+            fin_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
+
+            self.log(fin_ack)
+            if verbose:
+                print("========== FIN ACK PACKET ==========")
+                fin_ack.show()
+                print('====================================')
+
+            ack = sr1(fin_ack, timeout=self.timeout)
+
+            self.log(ack, received=True)
+            if verbose:
+                print("=========== RECEIVED ACK ===========")
+                ack.show()
+                print('====================================')
+
             self.seq += 1
 
             assert ack.haslayer(TCP), 'TCP layer missing'
@@ -176,7 +190,16 @@ class Connection:
             def inner_disconnect(pkt):
                 if pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
                     nonlocal received_finack
+                    nonlocal verbose
+                    nonlocal self
+
                     received_finack = True
+
+                    self.log(pkt.show(dump=True), received=True)
+                    if verbose:
+                        print("========= RECEIVED FIN ACK =========")
+                        pkt.show()
+                        print('====================================')
 
             # sniff packets from dst until finack or fin is received
             while True:
@@ -187,6 +210,12 @@ class Connection:
 
             # response with ack
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+
+            self.log(ack.show(dump=True))
+            if verbose:
+                print("============ ACK PACKET ============")
+                ack.show()
+                print('====================================')
             send(ack, verbose=False)
 
         except Exception as ex:
@@ -303,6 +332,7 @@ class Connection:
             self._lock.release()
 
     def _receiving_thread_func(self):
+
         # loop while connection is active, the packets are passed to the _ack function
         while self.connected:
             sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
