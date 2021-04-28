@@ -11,6 +11,7 @@ CONFIG_FILE = 'config.ini'
 # TODO: set timeout in send calls
 # TODO: add log saving
 # TODO: add default load list
+# TODO: create a close function
 class Connection:
 
     def __init__(self):
@@ -41,6 +42,9 @@ class Connection:
         self._receiving_thread = None
         self._lock = threading.Lock()
         self._padding = True
+
+        # logging
+        self._log_file = None
 
     def config(self, src=None, dst=None, sport=None, dport=None,
                timeout=None, base_seq=None, seq=None, ack=None, v=None):
@@ -95,11 +99,15 @@ class Connection:
             print('ERROR YOU ARE CURRENTLY CONNECTED')
             return
 
+        now = datetime.now()
+        self._log_file = 'logs/' + str(now.strftime("%d-%m-%Y %H:%M:%S")) + '.txt'
+
         try:
             # SYN
             self.ip = IP(src=self.src, dst=self.dst)
             syn = self.ip / TCP(sport=self.sport, dport=self.dport, flags='S', seq=self.seq)
 
+            self.log(syn.show(dump=True))
             if verbose:
                 print("============= SYN PACKET =============")
                 syn.show()
@@ -108,6 +116,7 @@ class Connection:
             # sending syn and waiting for syn_Ack response
             syn_ack = sr1(syn, timeout=self.timeout, verbose=False)
 
+            self.log(syn_ack.show(dump=True), received=True)
             if verbose:
                 print("============== RESPONSE ==============")
                 syn_ack.show()
@@ -127,6 +136,7 @@ class Connection:
             # sending ack response
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
 
+            self.log(ack.show(dump=True))
             if verbose:
                 print("============ ACK PACKET ============")
                 syn_ack.show()
@@ -187,8 +197,21 @@ class Connection:
         finally:
             self._lock.release()
 
-    def log(self, inbound):
-        pass
+    def log(self, content, received=False):
+        f = open(self._log_file, 'a+')
+        if received:
+            f.write('''
+========== RECEIVED ==========
+{}
+==============================         
+'''.format(content))
+        else:
+            f.write('''
+============ SENT ============
+{}
+==============================         
+'''.format(content))
+        f.close()
 
     def reset(self, seq=None, v=None):
         verbose = self.v if v is None else v
@@ -200,13 +223,14 @@ class Connection:
             ip = IP(src=self.src, dst=self.dst)
             rst = ip / TCP(sport=self.sport, dport=self.dport, flags="R", seq=seq)
 
+            self.log(rst.show(dump=True))
             if verbose:
                 print("=========== RESET PACKET ===========")
                 rst.show()
                 print('====================================')
 
             # send rst packet
-            send(rst)
+            send(rst, verbose=False)
 
             # reset connection values
             self.base_ack = 0
@@ -219,6 +243,7 @@ class Connection:
                 self._receiving_thread.join()
                 self._receiving_thread = None
 
+            print('connection was reset')
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND RESET")
@@ -252,6 +277,7 @@ class Connection:
             # craft packet with payload
             pkt = self.ip / TCP(sport=self.sport, dport=self.dport, flags="PA", seq=self.seq, ack=self.ack) / payload
 
+            self.log(pkt.show(dump=True))
             if verbose:
                 print("=========== SENDING PACKET ===========")
                 pkt.show()
@@ -261,6 +287,7 @@ class Connection:
             ack = sr1(pkt, timeout=self.timeout, verbose=False)
             self.seq += len(payload)
 
+            self.log(ack.show(dump=True), received=True)
             if verbose:
                 print("============== RESPONSE ==============")
                 ack.show()
@@ -290,12 +317,15 @@ class Connection:
         else:
             self._padding = True
 
-        print("============== RECEIVED ==============")
-        pkt.show()
-        print("=======================================")
-
         self._lock.acquire()
         try:
+
+            self.log(pkt.show(dump=True), received=True)
+            if self.v:
+                print("========== RECEIVED PACKET ============")
+                pkt.show()
+                print("=======================================")
+
             # check for tcp layer
             assert pkt.haslayer(TCP), 'TCP layer missing'
 
@@ -322,6 +352,7 @@ class Connection:
             # acknowledge any data sent
             self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+            self.log(ack.show(dump=True))
             send(ack, verbose=False)
 
         except Exception as ex:
