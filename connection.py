@@ -10,6 +10,7 @@ CONFIG_FILE = 'config.ini'
 # TODO: add default load list
 # TODO: create a close function
 # TODO: add verbose function and remove repeated verbose output code
+# TODO: force send
 class Connection:
 
     def __init__(self):
@@ -298,6 +299,18 @@ class Connection:
             config.write(config_file)
             print("Configuration saved")
 
+    def fsend(self, payload, seq=None, ack=None, tcp=None, flags=None):
+        ip = IP(src=self.src, dst=self.dst)
+
+        tcp = tcp
+        if tcp is None:
+            tcp = TCP(sport=self.sport, dport=self.dport)
+            tcp.seq = seq
+            tcp.ack = ack
+            tcp.flags = flags
+
+        send(ip/tcp/payload)
+
     def send(self, payload, v=None):
         verbose = self.v if v is None else v
 
@@ -320,18 +333,18 @@ class Connection:
             ack = sr1(pkt, timeout=self.timeout, verbose=False)
             self.seq += len(payload)
 
+            assert ack.haslayer(TCP), 'TCP layer missing'
+            assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
+
             self.log(ack.show(dump=True), received=True)
             if verbose:
                 print("============== RESPONSE ==============")
                 ack.show()
                 print("=======================================")
 
-            assert ack.haslayer(TCP), 'TCP layer missing'
-            assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
-
         except Exception as ex:
             print(ex)
-            print("FAILED TO SEND PAYLOAD")
+            print("ERROR SENDING PAYLOAD")
         finally:
             self._lock.release()
 
