@@ -9,6 +9,7 @@ CONFIG_FILE = 'config.ini'
 
 # TODO: add default load list
 # TODO: create a close function
+# TODO: add verbose function and remove repeated verbose output code
 class Connection:
 
     def __init__(self):
@@ -141,7 +142,7 @@ class Connection:
                 syn_ack.show()
                 print("=======================================")
 
-            send(ack, timeout=self.timeout, verbose=False)
+            send(ack, verbose=False)
 
             self.connected = True
             self._receiving_thread = threading.Thread(target=self._receiving_thread_func, args=())
@@ -219,7 +220,7 @@ class Connection:
                 print("============ ACK PACKET ============")
                 ack.show()
                 print('====================================')
-            send(ack, timeout=self.timeout, verbose=False)
+            send(ack, verbose=False)
 
         except Exception as ex:
             print(ex)
@@ -262,7 +263,7 @@ class Connection:
                 print('====================================')
 
             # send rst packet
-            send(rst, timeout=self.timeout, verbose=False)
+            send(rst, verbose=False)
 
             # reset connection values
             self.base_ack = 0
@@ -373,11 +374,11 @@ class Connection:
             elif pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
                 self.ack += 1
                 ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="A", seq=self.seq, ack=self.ack)
-                send(ack, timeout=self.timeout, verbose=False)
+                send(ack, verbose=False)
                 self.seq += 1
 
                 fin_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
-                send(fin_ack, timeout=self.timeout, verbose=False)
+                send(fin_ack, verbose=False)
                 self.connected = False
                 return
 
@@ -385,7 +386,7 @@ class Connection:
             self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             self.log(ack.show(dump=True))
-            send(ack, timeout=self.timeout, verbose=False)
+            send(ack, verbose=False)
 
         except Exception as ex:
             print(ex)
