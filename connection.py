@@ -10,7 +10,6 @@ CONFIG_FILE = 'config.ini'
 # TODO: add default load list
 # TODO: create a close function
 # TODO: add verbose function and remove repeated verbose output code
-# TODO: force send
 class Connection:
 
     def __init__(self):

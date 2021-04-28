@@ -36,6 +36,11 @@ def disconnect(**kwargs):
 def send(payload, **kwargs):
     connection.send(payload, **kwargs)
 
+def fsend(payload, **kwargs):
+    connection.fsend(payload, **kwargs)
+
+def ssend(*args, **kwargs):
+    scapy.all.send(*args, **kwargs)
 
 def save():
     connection.save()
@@ -51,7 +56,8 @@ def help():
     disconnect() - disconnect from server
     load(<contrib name>) - loads contrib module
     save() - saves the application configuration
-    send(<packet>) - sends packet(s)
+    send(<data>) - sends packet(s)
+    fsend(<data>) - sends packet(s) 
     show(<scapy packet>) - shows a scapy packet
     reset() - resets the connection
     ''')
