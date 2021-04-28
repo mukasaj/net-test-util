@@ -7,8 +7,6 @@ from scapy.layers.inet import IP, TCP
 CONFIG_FILE = 'config.ini'
 
 
-# TODO: set timeout in send calls
-# TODO: add log saving
 # TODO: add default load list
 # TODO: create a close function
 class Connection:
@@ -143,7 +141,7 @@ class Connection:
                 syn_ack.show()
                 print("=======================================")
 
-            send(ack, verbose=False)
+            send(ack, timeout=self.timeout, verbose=False)
 
             self.connected = True
             self._receiving_thread = threading.Thread(target=self._receiving_thread_func, args=())
@@ -202,11 +200,16 @@ class Connection:
                         print('====================================')
 
             # sniff packets from dst until finack or fin is received
+            timeout = time.time() + self.timeout
             while True:
-                sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
-                      prn=inner_disconnect, timeout=1)
+                # timeout so we don't get stuck waiting for the FIN ACK forever
+                assert time.time() < timeout, 'Timed out waiting for FIN ACK'
+
                 if received_finack:
                     break
+
+                sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
+                      prn=inner_disconnect, timeout=1)
 
             # response with ack
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
@@ -216,7 +219,7 @@ class Connection:
                 print("============ ACK PACKET ============")
                 ack.show()
                 print('====================================')
-            send(ack, verbose=False)
+            send(ack, timeout=self.timeout, verbose=False)
 
         except Exception as ex:
             print(ex)
@@ -259,7 +262,7 @@ class Connection:
                 print('====================================')
 
             # send rst packet
-            send(rst, verbose=False)
+            send(rst, timeout=self.timeout, verbose=False)
 
             # reset connection values
             self.base_ack = 0
@@ -332,7 +335,6 @@ class Connection:
             self._lock.release()
 
     def _receiving_thread_func(self):
-
         # loop while connection is active, the packets are passed to the _ack function
         while self.connected:
             sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
@@ -371,11 +373,11 @@ class Connection:
             elif pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
                 self.ack += 1
                 ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="A", seq=self.seq, ack=self.ack)
-                send(ack, verbose=False)
+                send(ack, timeout=self.timeout, verbose=False)
                 self.seq += 1
 
                 fin_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
-                send(fin_ack, verbose=False)
+                send(fin_ack, timeout=self.timeout, verbose=False)
                 self.connected = False
                 return
 
@@ -383,7 +385,7 @@ class Connection:
             self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
             self.log(ack.show(dump=True))
-            send(ack, verbose=False)
+            send(ack, timeout=self.timeout, verbose=False)
 
         except Exception as ex:
             print(ex)
