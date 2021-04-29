@@ -8,7 +8,6 @@ CONFIG_FILE = 'config.ini'
 
 
 # TODO: add default load list
-# TODO: create a close function
 # TODO: add verbose function and remove repeated verbose output code
 class Connection:
 
@@ -46,6 +45,19 @@ class Connection:
 
     def config(self, src=None, dst=None, sport=None, dport=None,
                timeout=None, base_seq=None, seq=None, ack=None, v=None):
+        """
+    config(src=None, dst=None, sport=None, dport=None, timeout=None, base_seq=None, seq=None, ack=None, v=None)
+        View the current configuration or update the configuration by passing in new values
+        :param src: source ip
+        :param dst: destination ip
+        :param sport: source port
+        :param dport: destination port
+        :param timeout: timeout used when sending packets and waiting for a response
+        :param base_seq: base sequence number used by the application
+        :param seq: current sequence number
+        :param ack: current acknowledgement number
+        :param v: verbose setting, if True all function will print out to console
+        """
         self.src = src if src else self.src
         self.dst = dst if dst else self.dst
         self.sport = sport if sport else self.sport
@@ -87,10 +99,12 @@ class Connection:
             self.ack - self.base_ack
         ))
 
-    def is_connected(self):
-        return self.connected
-
     def connect(self, v=None):
+        """
+    connect(v=None)
+        open a connection using the values specified in config
+        :param v: verbose - set to True for verbose output to console
+        """
         verbose = self.v if v is None else v
 
         # checking if we're already connected
@@ -153,7 +167,23 @@ class Connection:
             print("FAILED TO CONNECT, SENDING RESET")
             self.reset()
 
+    def close(self):
+        """
+    close()
+        Sends a reset if the connection is open and application is closing.
+        Meant to be used when the application is closing
+        """
+        if self.connected:
+            print("\nsending RST packet to open connection")
+            self.reset()
+
     def disconnect(self, v=None):
+        """
+    disconnect(v=None)
+        Disconnect from the current connection
+        :param v: verbose - set to True for verbose output to console
+        :return:
+        """
         verbose = self.v if v is None else v
         received_finack = False
 
@@ -231,6 +261,12 @@ class Connection:
             self._lock.release()
 
     def log(self, content, received=False):
+        """
+    log(content, received=False)
+        Logs messages into the log file for the current connection
+        :param content: message to be written into the log file
+        :param received: bool that determines if the message was sent or received
+        """
         f = open(self._log_file, 'a+')
         if received:
             f.write('''
@@ -247,6 +283,13 @@ class Connection:
         f.close()
 
     def reset(self, seq=None, v=None):
+        """
+    reset(seq=None, v=None)
+        send a reset packet to source ip specified in config
+        :param seq: specify a different seq number than config for the packet
+        :param v: verbose - set to True for verbose output to console
+        :return:
+        """
         verbose = self.v if v is None else v
 
         self._lock.acquire()
@@ -284,6 +327,10 @@ class Connection:
             self._lock.release()
 
     def save(self):
+        """
+    save()
+        save the current configuration to the config.ini file
+        """
         config = configparser.ConfigParser()
         config['APP_CONFIG'] = {
             'src': self.src,
@@ -299,6 +346,16 @@ class Connection:
             print("Configuration saved")
 
     def fsend(self, payload, seq=None, ack=None, tcp=None, flags=None):
+        """
+    fsend(payload, seq=None, ack=None, tcp=None, flags=None)
+        send a packet without be connected
+        NOTE: will break the seq and ack numbers if you're currently connected
+        :param payload: payload to be sent
+        :param seq: specify new seq number
+        :param ack: specify new ack number
+        :param tcp: specify tcp segment of the packet
+        :param flags: specify tcp flags
+        """
         ip = IP(src=self.src, dst=self.dst)
 
         tcp = tcp
@@ -311,6 +368,12 @@ class Connection:
         send(ip/tcp/payload)
 
     def send(self, payload, v=None):
+        """
+    send(payload, v=None)
+        send a packet to the currently connected device
+        :param payload: payload to be sent
+        :param v: verbose - set to True for verbose output to console
+        """
         verbose = self.v if v is None else v
 
         if self.connected is False:

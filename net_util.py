@@ -13,61 +13,71 @@ HISTORY_FILE = '.history'
 connection = Connection()
 
 
-def config(**kwargs):
-    connection.config(**kwargs)
+def config(*args, **kwarg):
+    connection.config(*args, **kwarg)
 
 
-def load(module):
-    load_contrib(module)
+def load(*args, **kwargs):
+    """
+    load(*args, **kwargs)
+        passes args and kwargs into scapy load_contrib function, please read scapy docs for more info
+        :param args: passing args to scapy load_contrib function
+        :param kwargs: passing kwargs to scapy load_contrib function
+    """
+    load_contrib(*args, **kwargs)
 
 
-def show(pkt):
-    pkt.show()
+def connect(*args, **kwarg):
+    connection.connect(*args, **kwarg)
 
 
-def connect(**kwargs):
-    connection.connect(**kwargs)
+def disconnect(*args, **kwargs):
+    connection.disconnect(*args, **kwargs)
 
 
-def disconnect(**kwargs):
-    connection.disconnect(**kwargs)
+def send(*args, **kwarg):
+    connection.send(*args, **kwarg)
 
 
-def send(payload, **kwargs):
-    connection.send(payload, **kwargs)
+def fsend(*args, **kwarg):
+    connection.fsend(*args, **kwarg)
 
-def fsend(payload, **kwargs):
-    connection.fsend(payload, **kwargs)
 
 def ssend(*args, **kwargs):
+    """
+    ssend(*args, **kwargs)
+        passes args and kwargs into scapy send function, please read scapy docs for more info
+        :param args: passing args to scapy send function
+        :param kwargs: passing kwargs to scapy send function
+    """
     scapy.all.send(*args, **kwargs)
 
-def save():
-    connection.save()
+
+def save(*args, **kwarg):
+    connection.save(*args, **kwarg)
 
 
-def reset(**kwargs):
-    connection.reset(**kwargs)
+def reset(*args, **kwarg):
+    connection.reset(*args, **kwarg)
 
 
 def help():
-    print('''
-    connect() - connect to server
-    disconnect() - disconnect from server
-    load(<contrib name>) - loads contrib module
-    save() - saves the application configuration
-    send(<data>) - sends packet(s)
-    fsend(<data>) - sends packet(s) 
-    show(<scapy packet>) - shows a scapy packet
-    reset() - resets the connection
-    ''')
+    print('DOC STRINGS')
+    print(connection.config.__doc__)
+    print(connection.connect.__doc__)
+    print(connection.disconnect.__doc__)
+    print(connection.log.__doc__)
+    print(load.__doc__)
+    print(connection.save.__doc__)
+    print(connection.fsend.__doc__)
+    print(ssend.__doc__)
+    print(connection.send.__doc__)
+    print(connection.reset.__doc__)
 
 
 def exit():
     readline.write_history_file('history')
-    if connection.is_connected():
-        print("\nsending RST packet to open connection")
-        connection.reset()
+    connection.close()
     print("\nGoodbye")
     sys.exit()
 
@@ -84,6 +94,12 @@ if __name__ == '__main__':
         val = input(">>>")
         if val == '':
             continue
+        elif val == 'help':
+            help()
+            continue
+        elif val == 'exit':
+            exit()
+            break
         try:
             exec(val)
         except Exception as e:
