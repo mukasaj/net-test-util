@@ -196,7 +196,7 @@ class Connection:
             # sending fin and waiting for ack response
             fin_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
 
-            self.log(fin_ack)
+            self.log(fin_ack.show(dump=True))
             if verbose:
                 print("========== FIN ACK PACKET ==========")
                 fin_ack.show()
@@ -204,7 +204,7 @@ class Connection:
 
             ack = sr1(fin_ack, timeout=self.timeout)
 
-            self.log(ack, received=True)
+            self.log(ack.show(dump=True), received=True)
             if verbose:
                 print("=========== RECEIVED ACK ===========")
                 ack.show()
