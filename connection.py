@@ -7,10 +7,8 @@ from scapy.layers.inet import IP, TCP
 CONFIG_FILE = 'config.ini'
 
 
-# TODO: finish verbose outputs
-# TODO: set timeout in send calls
-# TODO: add log saving
 # TODO: add default load list
+# TODO: add verbose function and remove repeated verbose output code
 class Connection:
 
     def __init__(self):
@@ -42,8 +40,24 @@ class Connection:
         self._lock = threading.Lock()
         self._padding = True
 
+        # logging
+        self._log_file = None
+
     def config(self, src=None, dst=None, sport=None, dport=None,
                timeout=None, base_seq=None, seq=None, ack=None, v=None):
+        """
+    config(src=None, dst=None, sport=None, dport=None, timeout=None, base_seq=None, seq=None, ack=None, v=None)
+        View the current configuration or update the configuration by passing in new values
+        :param src: source ip
+        :param dst: destination ip
+        :param sport: source port
+        :param dport: destination port
+        :param timeout: timeout used when sending packets and waiting for a response
+        :param base_seq: base sequence number used by the application
+        :param seq: current sequence number
+        :param ack: current acknowledgement number
+        :param v: verbose setting, if True all function will print out to console
+        """
         self.src = src if src else self.src
         self.dst = dst if dst else self.dst
         self.sport = sport if sport else self.sport
@@ -85,21 +99,29 @@ class Connection:
             self.ack - self.base_ack
         ))
 
-    def is_connected(self):
-        return self.connected
-
     def connect(self, v=None):
+        """
+    connect(v=None)
+        open a connection using the values specified in config
+        :param v: verbose - set to True for verbose output to console
+        """
         verbose = self.v if v is None else v
 
+        # checking if we're already connected
         if self.connected:
             print('ERROR YOU ARE CURRENTLY CONNECTED')
             return
+
+        # creating file name for the session
+        now = datetime.now()
+        self._log_file = 'logs/' + str(now.strftime("%d-%m-%Y %H:%M:%S")) + '.txt'
 
         try:
             # SYN
             self.ip = IP(src=self.src, dst=self.dst)
             syn = self.ip / TCP(sport=self.sport, dport=self.dport, flags='S', seq=self.seq)
 
+            self.log(syn.show(dump=True))
             if verbose:
                 print("============= SYN PACKET =============")
                 syn.show()
@@ -108,6 +130,7 @@ class Connection:
             # sending syn and waiting for syn_Ack response
             syn_ack = sr1(syn, timeout=self.timeout, verbose=False)
 
+            self.log(syn_ack.show(dump=True), received=True)
             if verbose:
                 print("============== RESPONSE ==============")
                 syn_ack.show()
@@ -127,6 +150,7 @@ class Connection:
             # sending ack response
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
 
+            self.log(ack.show(dump=True))
             if verbose:
                 print("============ ACK PACKET ============")
                 syn_ack.show()
@@ -143,8 +167,23 @@ class Connection:
             print("FAILED TO CONNECT, SENDING RESET")
             self.reset()
 
-    # TODO: fix disconnect
+    def close(self):
+        """
+    close()
+        Sends a reset if the connection is open and application is closing.
+        Meant to be used when the application is closing
+        """
+        if self.connected:
+            print("\nsending RST packet to open connection")
+            self.reset()
+
     def disconnect(self, v=None):
+        """
+    disconnect(v=None)
+        Disconnect from the current connection
+        :param v: verbose - set to True for verbose output to console
+        :return:
+        """
         verbose = self.v if v is None else v
         received_finack = False
 
@@ -155,8 +194,22 @@ class Connection:
         self._lock.acquire()
         try:
             # sending fin and waiting for ack response
-            fin = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
-            ack = sr1(fin, timeout=self.timeout)
+            fin_ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags="FA", seq=self.seq, ack=self.ack)
+
+            self.log(fin_ack.show(dump=True))
+            if verbose:
+                print("========== FIN ACK PACKET ==========")
+                fin_ack.show()
+                print('====================================')
+
+            ack = sr1(fin_ack, timeout=self.timeout)
+
+            self.log(ack.show(dump=True), received=True)
+            if verbose:
+                print("=========== RECEIVED ACK ===========")
+                ack.show()
+                print('====================================')
+
             self.seq += 1
 
             assert ack.haslayer(TCP), 'TCP layer missing'
@@ -166,17 +219,37 @@ class Connection:
             def inner_disconnect(pkt):
                 if pkt[TCP].flags == 'FA' or pkt[TCP].flags == 'F':
                     nonlocal received_finack
+                    nonlocal verbose
+                    nonlocal self
+
                     received_finack = True
 
+                    self.log(pkt.show(dump=True), received=True)
+                    if verbose:
+                        print("========= RECEIVED FIN ACK =========")
+                        pkt.show()
+                        print('====================================')
+
             # sniff packets from dst until finack or fin is received
+            timeout = time.time() + self.timeout
             while True:
-                sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
-                      prn=inner_disconnect, timeout=1)
+                # timeout so we don't get stuck waiting for the FIN ACK forever
+                assert time.time() < timeout, 'Timed out waiting for FIN ACK'
+
                 if received_finack:
                     break
 
+                sniff(filter=' tcp and src host {} and port {}'.format(self.dst, self.sport), count=2,
+                      prn=inner_disconnect, timeout=1)
+
             # response with ack
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+
+            self.log(ack.show(dump=True))
+            if verbose:
+                print("============ ACK PACKET ============")
+                ack.show()
+                print('====================================')
             send(ack, verbose=False)
 
         except Exception as ex:
@@ -187,10 +260,36 @@ class Connection:
         finally:
             self._lock.release()
 
-    def log(self, inbound):
-        pass
+    def log(self, content, received=False):
+        """
+    log(content, received=False)
+        Logs messages into the log file for the current connection
+        :param content: message to be written into the log file
+        :param received: bool that determines if the message was sent or received
+        """
+        f = open(self._log_file, 'a+')
+        if received:
+            f.write('''
+========== RECEIVED ==========
+{}
+==============================         
+'''.format(content))
+        else:
+            f.write('''
+============ SENT ============
+{}
+==============================         
+'''.format(content))
+        f.close()
 
     def reset(self, seq=None, v=None):
+        """
+    reset(seq=None, v=None)
+        send a reset packet to source ip specified in config
+        :param seq: specify a different seq number than config for the packet
+        :param v: verbose - set to True for verbose output to console
+        :return:
+        """
         verbose = self.v if v is None else v
 
         self._lock.acquire()
@@ -200,13 +299,14 @@ class Connection:
             ip = IP(src=self.src, dst=self.dst)
             rst = ip / TCP(sport=self.sport, dport=self.dport, flags="R", seq=seq)
 
+            self.log(rst.show(dump=True))
             if verbose:
                 print("=========== RESET PACKET ===========")
                 rst.show()
                 print('====================================')
 
             # send rst packet
-            send(rst)
+            send(rst, verbose=False)
 
             # reset connection values
             self.base_ack = 0
@@ -219,6 +319,7 @@ class Connection:
                 self._receiving_thread.join()
                 self._receiving_thread = None
 
+            print('connection was reset')
         except Exception as ex:
             print(ex)
             print("FAILED TO SEND RESET")
@@ -226,6 +327,10 @@ class Connection:
             self._lock.release()
 
     def save(self):
+        """
+    save()
+        save the current configuration to the config.ini file
+        """
         config = configparser.ConfigParser()
         config['APP_CONFIG'] = {
             'src': self.src,
@@ -240,7 +345,35 @@ class Connection:
             config.write(config_file)
             print("Configuration saved")
 
+    def fsend(self, payload, seq=None, ack=None, tcp=None, flags=None):
+        """
+    fsend(payload, seq=None, ack=None, tcp=None, flags=None)
+        send a packet without be connected
+        NOTE: will break the seq and ack numbers if you're currently connected
+        :param payload: payload to be sent
+        :param seq: specify new seq number
+        :param ack: specify new ack number
+        :param tcp: specify tcp segment of the packet
+        :param flags: specify tcp flags
+        """
+        ip = IP(src=self.src, dst=self.dst)
+
+        tcp = tcp
+        if tcp is None:
+            tcp = TCP(sport=self.sport, dport=self.dport)
+            tcp.seq = seq
+            tcp.ack = ack
+            tcp.flags = flags
+
+        send(ip/tcp/payload)
+
     def send(self, payload, v=None):
+        """
+    send(payload, v=None)
+        send a packet to the currently connected device
+        :param payload: payload to be sent
+        :param v: verbose - set to True for verbose output to console
+        """
         verbose = self.v if v is None else v
 
         if self.connected is False:
@@ -252,6 +385,7 @@ class Connection:
             # craft packet with payload
             pkt = self.ip / TCP(sport=self.sport, dport=self.dport, flags="PA", seq=self.seq, ack=self.ack) / payload
 
+            self.log(pkt.show(dump=True))
             if verbose:
                 print("=========== SENDING PACKET ===========")
                 pkt.show()
@@ -261,17 +395,18 @@ class Connection:
             ack = sr1(pkt, timeout=self.timeout, verbose=False)
             self.seq += len(payload)
 
+            assert ack.haslayer(TCP), 'TCP layer missing'
+            assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
+
+            self.log(ack.show(dump=True), received=True)
             if verbose:
                 print("============== RESPONSE ==============")
                 ack.show()
                 print("=======================================")
 
-            assert ack.haslayer(TCP), 'TCP layer missing'
-            assert ack[TCP].flags & 0x10 == 0x10, 'No ACK flag'
-
         except Exception as ex:
             print(ex)
-            print("FAILED TO SEND PAYLOAD")
+            print("ERROR SENDING PAYLOAD")
         finally:
             self._lock.release()
 
@@ -290,12 +425,15 @@ class Connection:
         else:
             self._padding = True
 
-        print("============== RECEIVED ==============")
-        pkt.show()
-        print("=======================================")
-
         self._lock.acquire()
         try:
+
+            self.log(pkt.show(dump=True), received=True)
+            if self.v:
+                print("========== RECEIVED PACKET ============")
+                pkt.show()
+                print("=======================================")
+
             # check for tcp layer
             assert pkt.haslayer(TCP), 'TCP layer missing'
 
@@ -322,6 +460,7 @@ class Connection:
             # acknowledge any data sent
             self.ack += len(pkt[TCP].load)
             ack = self.ip / TCP(sport=self.sport, dport=self.dport, flags='A', seq=self.seq, ack=self.ack)
+            self.log(ack.show(dump=True))
             send(ack, verbose=False)
 
         except Exception as ex:
