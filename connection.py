@@ -18,6 +18,10 @@ class Connection:
         config = configparser.ConfigParser()
         config.read(CONFIG_FILE)
 
+        self.packages = config['APP_CONFIG']['packages'] if config.has_option('APP_CONFIG', 'packages') else ''
+        for package in self.packages.split(','):
+            load_contrib(package)
+
         # application variables
         self.src = str(config['APP_CONFIG']['src']) if config.has_option('APP_CONFIG', 'src') else '1.1.1.1'
         self.dst = str(config['APP_CONFIG']['dst']) if config.has_option('APP_CONFIG', 'dst') else '1.1.1.1'
@@ -44,7 +48,7 @@ class Connection:
         self._log_file = None
 
     def config(self, src=None, dst=None, sport=None, dport=None,
-               timeout=None, base_seq=None, seq=None, ack=None, v=None):
+               timeout=None, base_seq=None, seq=None, ack=None, v=None, packages=None):
         """
     config(src=None, dst=None, sport=None, dport=None, timeout=None, base_seq=None, seq=None, ack=None, v=None)
         View the current configuration or update the configuration by passing in new values
@@ -67,7 +71,7 @@ class Connection:
         self.seq = seq if seq else self.seq
         self.ack = ack if ack else self.ack
         self.v = v if v is not None else self.v
-
+        self.packages = packages.replace(' ', '') if isinstance(packages, str) else self.packages
         print('''
     ==== APPLICATION CONFIGURATION ====
     source ip(src):             {}
@@ -77,6 +81,7 @@ class Connection:
     timeout(timeout):           {}
     base seq number(base_seq):  {}
     verbose(v):                 {}
+    packages(packages)          {}
     
     ==== SESSION DATA ====
     connection status           {}
@@ -91,6 +96,7 @@ class Connection:
             self.timeout,
             self.base_seq,
             self.v,
+            self.packages,
             True if self.connected else False,
             self.seq,
             self.seq - self.base_seq,
@@ -187,6 +193,10 @@ class Connection:
         verbose = self.v if v is None else v
         received_finack = False
 
+        if self.connected is False:
+            print("ERROR, not connected")
+            return
+
         # joining the receiving thread
         self.connected = False
         self._receiving_thread.join()
@@ -202,7 +212,7 @@ class Connection:
                 fin_ack.show()
                 print('====================================')
 
-            ack = sr1(fin_ack, timeout=self.timeout)
+            ack = sr1(fin_ack, timeout=self.timeout, verbose=False)
 
             self.log(ack.show(dump=True), received=True)
             if verbose:
@@ -213,7 +223,7 @@ class Connection:
             self.seq += 1
 
             assert ack.haslayer(TCP), 'TCP layer missing'
-            assert ack[TCP].flags == 'A', 'Did not response when ACK'
+            assert ack[TCP].flags == 'A', 'Did not response with ACK'
 
             # inner function to check for finack ot fin response from sniff
             def inner_disconnect(pkt):
@@ -258,7 +268,8 @@ class Connection:
             self._lock.release()
             self.reset()
         finally:
-            self._lock.release()
+            if self._lock.locked():
+                self._lock.release()
 
     def log(self, content, received=False):
         """
@@ -316,6 +327,7 @@ class Connection:
 
             # if the receiving thread is not none have it return to the main thread
             if self._receiving_thread:
+                self._lock.release()
                 self._receiving_thread.join()
                 self._receiving_thread = None
 
@@ -324,7 +336,8 @@ class Connection:
             print(ex)
             print("FAILED TO SEND RESET")
         finally:
-            self._lock.release()
+            if self._lock.locked():
+                self._lock.release()
 
     def save(self):
         """
@@ -339,7 +352,8 @@ class Connection:
             'dport': self.dport,
             'timeout': self.timeout,
             'base_seq': self.base_seq,
-            'verbose': self.v
+            'verbose': self.v,
+            'packages': self.packages
         }
         with open(CONFIG_FILE, 'w') as config_file:
             config.write(config_file)
