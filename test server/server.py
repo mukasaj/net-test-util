@@ -1,7 +1,7 @@
 import socket
 import sys
 
-HOST = '192.168.59.129'  # Standard loopback interface address (localhost)
+HOST = 'localhost'  # Standard loopback interface address (localhost)
 PORT = int(sys.argv[1])        # Port to listen on (non-privileged ports are > 1023)
 
 print("listening at {}:{}".format(HOST, PORT))
