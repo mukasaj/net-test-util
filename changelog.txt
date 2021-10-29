@@ -1,4 +1,0 @@
-v0.3 changelog
-
-- Added more print outs for verbose
-- Added the ability to save the connection config

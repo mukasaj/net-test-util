@@ -1,11 +1,11 @@
 import readline
 import signal
-import sys
+import os
 
 from connection import Connection
 from scapy.all import *
 
-VERSION = '0.4'
+VERSION = '0.5'
 HISTORY_FILE = '.history'
 
 # iptables -A OUTPUT -p tcp --tcp-flags RST RST -s 192.168.1.20 -j DROP
@@ -76,7 +76,7 @@ def help():
 
 
 def exit():
-    readline.write_history_file('history')
+    readline.write_history_file(HISTORY_FILE)
     connection.close()
     print("\nGoodbye")
     sys.exit()
@@ -89,7 +89,8 @@ def sigint_handler(sig, frame):
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigint_handler)
     print("net-util v{}".format(VERSION))
-    readline.read_history_file('history')
+    if os.path.isfile(HISTORY_FILE):
+        readline.read_history_file(HISTORY_FILE)
     while True:
         val = input(">>>")
         if val == '':

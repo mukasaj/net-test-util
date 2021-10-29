@@ -1,12 +1,12 @@
 import socket
 import sys
 
-HOST = 'localhost'  # Standard loopback interface address (localhost)
-PORT = int(sys.argv[1])        # Port to listen on (non-privileged ports are > 1023)
+IP = str(sys.argv[1])     # get IP from command line
+PORT = int(sys.argv[2])     # get PORT from command line
 
-print("listening at {}:{}".format(HOST, PORT))
+print("listening at {}:{}".format(IP, PORT))
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, PORT))
+    s.bind((IP, PORT))
     s.listen()
     conn, addr = s.accept()
     with conn:
